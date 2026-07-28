@@ -117,6 +117,31 @@
                     <p class="text-center py-4 text-slate-400">저장된 기록이 없습니다.</p>
                 </div>
             </div>
+
+            <!-- User Feedback Board Widget -->
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100 flex flex-col space-y-4">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-comments text-emerald-600"></i> 사용자 의견 게시판
+                    </h3>
+                    <span class="text-[10px] text-slate-400">실시간 연동</span>
+                </div>
+
+                <!-- Feedback Input Form -->
+                <form id="feedbackForm" class="flex flex-col space-y-2">
+                    <input type="text" id="feedbackAuthor" placeholder="작성자 이름 (기본값: 익명)" class="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-emerald-500 transition">
+                    <textarea id="feedbackInput" rows="2" placeholder="급식 후기나 개선 의견을 적어주세요..." class="w-full text-xs p-2.5 rounded-xl border border-slate-200 focus:outline-none focus:border-emerald-500 resize-none transition" required></textarea>
+                    <button type="submit" id="feedbackSubmitBtn" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center justify-center gap-1">
+                        <i class="fa-solid fa-paper-plane"></i>
+                        <span>의견 등록</span>
+                    </button>
+                </form>
+
+                <!-- Feedback List -->
+                <div id="feedbackList" class="space-y-2 max-h-60 overflow-y-auto text-xs text-slate-600 pt-2 border-t border-slate-100">
+                    <p class="text-center py-4 text-slate-400">등록된 의견이 없습니다.</p>
+                </div>
+            </div>
         </section>
 
         <!-- Right Column: Results Display Area (7 Cols) -->
@@ -268,8 +293,166 @@
     <!-- Toast Notification Container -->
     <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2"></div>
 
-    <script>
-        // DOM Elements
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Firebase Configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyCgeBQgkEIKHcRAjvW07mdFRDDUlKSZQbk",
+            authDomain: "calai-4aacb.firebaseapp.com",
+            projectId: "calai-4aacb",
+            storageBucket: "calai-4aacb.firebasestorage.app",
+            messagingSenderId: "844577147388",
+            appId: "1:844577147388:web:edd301630613991a2d4a79",
+            measurementId: "G-ZP4EV2X5ZR"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'calai-app';
+        let currentUser = null;
+
+        // Firebase Authentication & Firestore Listener with fallback
+        async function initAuth() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } catch (customTokenErr) {
+                        console.warn("Custom token auth failed, trying anonymous auth:", customTokenErr);
+                        await signInAnonymously(auth);
+                    }
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.warn("Firebase auth not configured or failed, operating in guest mode:", err);
+                currentUser = { uid: 'guest-' + Math.random().toString(36).substring(2, 9), isGuest: true };
+            } finally {
+                // Start listening to real-time feedback regardless of auth state
+                listenToFeedbacks();
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+            }
+        });
+
+        initAuth();
+
+        // Listen for Realtime Feedback Updates (Sorted newest first in JS memory)
+        function listenToFeedbacks() {
+            const feedbacksRef = collection(db, 'artifacts', appId, 'public', 'data', 'feedbacks');
+            
+            onSnapshot(feedbacksRef, (snapshot) => {
+                const posts = [];
+                snapshot.forEach(doc => {
+                    posts.push({ id: doc.id, ...doc.data() });
+                });
+                
+                // Sort by newest first
+                posts.sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.timestamp || 0);
+                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.timestamp || 0);
+                    return timeB - timeA;
+                });
+
+                renderFeedbacks(posts);
+            }, (error) => {
+                console.error("Firestore fetch error:", error);
+            });
+        }
+
+        // Render Feedback List UI
+        function renderFeedbacks(posts) {
+            const listEl = document.getElementById('feedbackList');
+            if (!listEl) return;
+
+            if (posts.length === 0) {
+                listEl.innerHTML = '<p class="text-center py-4 text-slate-400">등록된 의견이 없습니다.</p>';
+                return;
+            }
+
+            listEl.innerHTML = '';
+            posts.forEach(post => {
+                const item = document.createElement('div');
+                item.className = 'p-3 rounded-xl bg-slate-50 border border-slate-100 flex flex-col space-y-1';
+                
+                let dateStr = '방금 전';
+                if (post.timestamp) {
+                    dateStr = new Date(post.timestamp).toLocaleDateString('ko-KR', {
+                        month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+                    });
+                }
+
+                item.innerHTML = `
+                    <div class="flex justify-between items-center text-[11px]">
+                        <span class="font-bold text-slate-800">${escapeHtml(post.author || '익명 사용자')}</span>
+                        <span class="text-[10px] text-slate-400">${dateStr}</span>
+                    </div>
+                    <p class="text-xs text-slate-600 break-words font-normal">${escapeHtml(post.content || '')}</p>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+
+        // Handle Feedback Submission
+        const feedbackForm = document.getElementById('feedbackForm');
+        if (feedbackForm) {
+            feedbackForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const authorInput = document.getElementById('feedbackAuthor');
+                const contentInput = document.getElementById('feedbackInput');
+                const submitBtn = document.getElementById('feedbackSubmitBtn');
+
+                const content = contentInput.value.trim();
+                const author = authorInput.value.trim() || '익명 사용자';
+
+                if (!content) {
+                    showToast('의견 내용을 입력해주세요.', 'error');
+                    return;
+                }
+
+                submitBtn.disabled = true;
+                submitBtn.innerText = '등록 중...';
+
+                try {
+                    const feedbacksRef = collection(db, 'artifacts', appId, 'public', 'data', 'feedbacks');
+                    await addDoc(feedbacksRef, {
+                        author: author,
+                        content: content,
+                        timestamp: Date.now(),
+                        createdAt: serverTimestamp()
+                    });
+
+                    contentInput.value = '';
+                    showToast('의견이 성공적으로 등록되었습니다!', 'success');
+                } catch (err) {
+                    console.error("Error adding document: ", err);
+                    showToast('의견 등록 실패. 다시 시도해주세요.', 'error');
+                } finally {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i><span>의견 등록</span>';
+                }
+            });
+        }
+
+        // DOM Elements for Main AI App
         const fileInput = document.getElementById('fileInput');
         const uploadContainer = document.getElementById('uploadContainer');
         const uploadPlaceholder = document.getElementById('uploadPlaceholder');
