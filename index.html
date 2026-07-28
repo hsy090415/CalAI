@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 급식 영양 분석 도우미</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Google Fonts Inter & Noto Sans KR -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; }
+        .gradient-bg { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
+        .glass-card { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .scan-line {
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #10B981, transparent);
+            position: absolute;
+            width: 100%;
+            animation: scan 2s infinite linear;
+        }
+        @keyframes scan {
+            0% { top: 0%; }
+            100% { top: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="gradient-bg text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-5xl mx-auto px-4 py-4 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <div class="bg-white/20 p-2.5 rounded-2xl flex items-center justify-center">
+                    <i class="fa-solid fa-utensils text-2xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight">AI 급식 영양 분석 도우미</h1>
+                    <p class="text-xs text-emerald-100">Gemini Vision AI 기반 맞춤 영양 리포트</p>
+                </div>
+            </div>
+            <div class="hidden sm:flex items-center space-x-2 bg-white/10 px-3 py-1.5 rounded-full text-xs font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-300 animate-pulse"></span>
+                <span>Vercel + Gemini 3.1</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="max-w-5xl mx-auto px-4 py-8 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+        
+        <!-- Left Column: Input & Preview Area (5 Cols) -->
+        <section class="lg:col-span-5 flex flex-col space-y-6">
+            <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex flex-col">
+                <h2 class="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+                    <i class="fa-solid fa-camera text-emerald-600"></i> 급식 사진 등록
+                </h2>
+
+                <!-- Tab Switching -->
+                <div class="flex bg-slate-100 p-1 rounded-xl mb-4 text-sm font-medium">
+                    <button id="tabUploadBtn" class="flex-1 py-2 rounded-lg text-center bg-white text-emerald-700 shadow-sm transition">
+                        <i class="fa-solid fa-upload mr-1"></i> 파일 업로드
+                    </button>
+                    <button id="tabCameraBtn" class="flex-1 py-2 rounded-lg text-center text-slate-500 hover:text-slate-800 transition">
+                        <i class="fa-solid fa-video mr-1"></i> 웹캠 촬영
+                    </button>
+                </div>
+
+                <!-- File Upload Container -->
+                <div id="uploadContainer" class="border-2 border-dashed border-emerald-200 hover:border-emerald-500 rounded-2xl p-6 text-center cursor-pointer transition bg-emerald-50/30 flex flex-col items-center justify-center min-h-[240px]">
+                    <input type="file" id="fileInput" accept="image/*" class="hidden">
+                    <div id="uploadPlaceholder" class="flex flex-col items-center space-y-3">
+                        <div class="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-2xl">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-semibold text-slate-700">급식 사진을 드래그하거나 클릭하세요</p>
+                            <p class="text-xs text-slate-400 mt-1">JPG, PNG, WEBP 지원</p>
+                        </div>
+                    </div>
+                    <img id="imagePreview" class="hidden max-h-[220px] rounded-xl object-contain shadow-md" alt="급식 사진 미리보기">
+                </div>
+
+                <!-- Camera Container -->
+                <div id="cameraContainer" class="hidden flex flex-col items-center justify-center min-h-[240px] bg-slate-900 rounded-2xl relative overflow-hidden">
+                    <video id="webcamVideo" autoplay playsinline class="w-full h-[220px] object-cover rounded-2xl"></video>
+                    <canvas id="webcamCanvas" class="hidden"></canvas>
+                    <button id="captureBtn" class="mt-3 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-2 px-5 rounded-full shadow-lg flex items-center gap-2 text-sm transition">
+                        <i class="fa-solid fa-circle-dot"></i> 촬영하기
+                    </button>
+                </div>
+
+                <!-- Action Button -->
+                <button id="analyzeBtn" disabled class="mt-6 w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold rounded-2xl shadow-lg hover:shadow-xl transition flex items-center justify-center space-x-2">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    <span id="analyzeBtnText">영양 분석 시작하기</span>
+                </button>
+
+                <p class="text-xs text-slate-400 text-center mt-3">
+                    * AI 분석 결과는 추정치이며 실제와 다소 차이가 있을 수 있습니다.
+                </p>
+            </div>
+
+            <!-- History Summary Widget -->
+            <div class="bg-white rounded-3xl p-5 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-bold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-emerald-600"></i> 최근 분석 기록
+                    </h3>
+                    <button id="clearHistoryBtn" class="text-xs text-slate-400 hover:text-rose-500 transition">기록 삭제</button>
+                </div>
+                <div id="historyList" class="space-y-2 max-h-48 overflow-y-auto text-xs text-slate-500">
+                    <p class="text-center py-4 text-slate-400">저장된 기록이 없습니다.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right Column: Results Display Area (7 Cols) -->
+        <section class="lg:col-span-7 flex flex-col space-y-6">
+            
+            <!-- Default Welcome State -->
+            <div id="welcomeState" class="bg-white rounded-3xl p-10 shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center min-h-[450px]">
+                <div class="w-20 h-20 rounded-full bg-emerald-50 text-emerald-500 flex items-center justify-center text-3xl mb-4">
+                    <i class="fa-solid fa-bowl-food"></i>
+                </div>
+                <h3 class="text-xl font-bold text-slate-800 mb-2">급식 식단을 분석해 드릴게요!</h3>
+                <p class="text-sm text-slate-500 max-w-sm">
+                    좌측에서 급식 사진을 등록하고 분석 버튼을 누르면 음식별 칼로리, 탄단지 비율, 건강 점수를 확인할 수 있습니다.
+                </p>
+            </div>
+
+            <!-- Loading Spinner / Animation State -->
+            <div id="loadingState" class="hidden bg-white rounded-3xl p-10 shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center min-h-[450px] relative overflow-hidden">
+                <div class="scan-line"></div>
+                <div class="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 text-3xl animate-bounce mb-6">
+                    <i class="fa-solid fa-microchip"></i>
+                </div>
+                <h3 class="text-lg font-bold text-slate-800 mb-1">Gemini Vision AI 분석 중...</h3>
+                <p class="text-sm text-slate-500">급식 사진 속 메뉴와 영양 성분을 판별하고 있습니다.</p>
+            </div>
+
+            <!-- Analysis Results View -->
+            <div id="resultState" class="hidden flex flex-col space-y-6">
+                
+                <!-- Summary Card Header -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div>
+                            <span id="resMealTag" class="inline-block px-3 py-1 bg-emerald-100 text-emerald-800 font-semibold text-xs rounded-full mb-2">
+                                식단 분석 완료
+                            </span>
+                            <h2 id="resMealName" class="text-2xl font-bold text-slate-900">오늘의 급식 식단</h2>
+                            <p class="text-xs text-slate-400 mt-1" id="resAnalysisDate">2026.07.28 분석됨</p>
+                        </div>
+                        
+                        <!-- Health Score & Total Calories Gauge -->
+                        <div class="flex items-center space-x-6 bg-slate-50 p-4 rounded-2xl w-full md:w-auto justify-around">
+                            <div class="text-center">
+                                <span class="text-xs text-slate-400 font-medium block mb-1">총 예상 칼로리</span>
+                                <span class="text-2xl font-extrabold text-emerald-600"><span id="resTotalCalories">0</span> <span class="text-xs text-slate-500 font-normal">kcal</span></span>
+                            </div>
+                            <div class="h-10 w-[1px] bg-slate-200"></div>
+                            <div class="text-center">
+                                <span class="text-xs text-slate-400 font-medium block mb-1">건강 점수</span>
+                                <span class="text-2xl font-extrabold text-blue-600"><span id="resHealthScore">0</span> <span class="text-xs text-slate-500 font-normal">/ 100</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Nutrition Breakdown (Carbs, Protein, Fat) -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                    <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-chart-pie text-emerald-600"></i> 탄·단·지 영양 균형
+                    </h3>
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                        <!-- Donut Chart -->
+                        <div class="md:col-span-5 flex justify-center">
+                            <div class="w-40 h-40 relative">
+                                <canvas id="macroChart"></canvas>
+                            </div>
+                        </div>
+                        <!-- Macro Bars -->
+                        <div class="md:col-span-7 space-y-4">
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-amber-600">탄수화물 (Carbs)</span>
+                                    <span id="resCarbsText" class="text-slate-700">0g (0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                    <div id="resCarbsBar" class="bg-amber-400 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-rose-600">단백질 (Protein)</span>
+                                    <span id="resProteinText" class="text-slate-700">0g (0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                    <div id="resProteinBar" class="bg-rose-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-indigo-600">지방 (Fat)</span>
+                                    <span id="resFatText" class="text-slate-700">0g (0%)</span>
+                                </div>
+                                <div class="w-full bg-slate-100 rounded-full h-2.5">
+                                    <div id="resFatBar" class="bg-indigo-500 h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Food Items Detail List -->
+                <div class="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
+                    <h3 class="text-base font-bold text-slate-800 mb-4 flex items-center gap-2">
+                        <i class="fa-solid fa-list-check text-emerald-600"></i> 구성 메뉴 및 추정 칼로리
+                    </h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-sm text-slate-600">
+                            <thead class="bg-slate-50 text-xs font-semibold text-slate-500 uppercase rounded-xl">
+                                <tr>
+                                    <th class="py-3 px-4 rounded-l-xl">메뉴 이름</th>
+                                    <th class="py-3 px-2 text-center">칼로리</th>
+                                    <th class="py-3 px-2 text-center">탄수화물</th>
+                                    <th class="py-3 px-2 text-center">단백질</th>
+                                    <th class="py-3 px-2 text-center">지방</th>
+                                    <th class="py-3 px-4 text-center rounded-r-xl">평가</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resFoodTableBody" class="divide-y divide-slate-100">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- AI Coach Feedback Card -->
+                <div class="bg-gradient-to-br from-emerald-500 to-teal-700 rounded-3xl p-6 text-white shadow-md">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <div class="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-user-doctor"></i>
+                        </div>
+                        <h3 class="text-lg font-bold">AI 영양 코치의 총평 & 조언</h3>
+                    </div>
+                    <p id="resHealthComment" class="text-sm leading-relaxed text-emerald-50 font-normal mb-4">
+                        분석 코멘트가 여기에 표시됩니다.
+                    </p>
+                    <div id="resImprovementsContainer" class="bg-black/10 rounded-2xl p-4 border border-white/10">
+                        <h4 class="text-xs font-bold text-emerald-200 uppercase tracking-wider mb-2">식단 개선 팁</h4>
+                        <ul id="resImprovementsList" class="list-disc list-inside text-xs space-y-1 text-white">
+                            <!-- Dynamic tips -->
+                        </ul>
+                    </div>
+                </div>
+
+            </div>
+
+        </section>
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col space-y-2"></div>
+
+    <script>
+        // DOM Elements
+        const fileInput = document.getElementById('fileInput');
+        const uploadContainer = document.getElementById('uploadContainer');
+        const uploadPlaceholder = document.getElementById('uploadPlaceholder');
+        const imagePreview = document.getElementById('imagePreview');
+        const tabUploadBtn = document.getElementById('tabUploadBtn');
+        const tabCameraBtn = document.getElementById('tabCameraBtn');
+        const cameraContainer = document.getElementById('cameraContainer');
+        const webcamVideo = document.getElementById('webcamVideo');
+        const webcamCanvas = document.getElementById('webcamCanvas');
+        const captureBtn = document.getElementById('captureBtn');
+        const analyzeBtn = document.getElementById('analyzeBtn');
+        const analyzeBtnText = document.getElementById('analyzeBtnText');
+
+        const welcomeState = document.getElementById('welcomeState');
+        const loadingState = document.getElementById('loadingState');
+        const resultState = document.getElementById('resultState');
+
+        const historyList = document.getElementById('historyList');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+
+        // State Variables
+        let selectedBase64Image = null;
+        let selectedMimeType = 'image/jpeg';
+        let mediaStream = null;
+        let macroChartInstance = null;
+
+        // Initialize App
+        document.addEventListener('DOMContentLoaded', () => {
+            loadHistory();
+            initChart();
+        });
+
+        // Toast Helper
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            const bgClass = type === 'error' ? 'bg-rose-600' : type === 'success' ? 'bg-emerald-600' : 'bg-slate-800';
+            toast.className = `${bgClass} text-white text-xs px-4 py-3 rounded-2xl shadow-xl transition-all duration-300 transform translate-y-2 opacity-0 flex items-center space-x-2`;
+            toast.innerHTML = `<i class="fa-solid ${type === 'error' ? 'fa-circle-exclamation' : 'fa-circle-info'}"></i><span>${message}</span>`;
+            document.getElementById('toastContainer').appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3500);
+        }
+
+        // Tab Switching Logic
+        tabUploadBtn.addEventListener('click', () => {
+            tabUploadBtn.className = 'flex-1 py-2 rounded-lg text-center bg-white text-emerald-700 shadow-sm transition';
+            tabCameraBtn.className = 'flex-1 py-2 rounded-lg text-center text-slate-500 hover:text-slate-800 transition';
+            uploadContainer.classList.remove('hidden');
+            cameraContainer.classList.add('hidden');
+            stopWebcam();
+        });
+
+        tabCameraBtn.addEventListener('click', () => {
+            tabCameraBtn.className = 'flex-1 py-2 rounded-lg text-center bg-white text-emerald-700 shadow-sm transition';
+            tabUploadBtn.className = 'flex-1 py-2 rounded-lg text-center text-slate-500 hover:text-slate-800 transition';
+            cameraContainer.classList.remove('hidden');
+            uploadContainer.classList.add('hidden');
+            startWebcam();
+        });
+
+        // File Upload Handlers
+        uploadContainer.addEventListener('click', () => fileInput.click());
+
+        uploadContainer.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadContainer.classList.add('border-emerald-500', 'bg-emerald-100/50');
+        });
+
+        uploadContainer.addEventListener('dragleave', () => {
+            uploadContainer.classList.remove('border-emerald-500', 'bg-emerald-100/50');
+        });
+
+        uploadContainer.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadContainer.classList.remove('border-emerald-500', 'bg-emerald-100/50');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleFileSelect(e.dataTransfer.files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleFileSelect(e.target.files[0]);
+            }
+        });
+
+        function handleFileSelect(file) {
+            if (!file.type.startsWith('image/')) {
+                showToast('이미지 파일만 업로드 가능합니다.', 'error');
+                return;
+            }
+
+            selectedMimeType = file.type;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const fullDataUrl = e.target.result;
+                selectedBase64Image = fullDataUrl.split(',')[1];
+                imagePreview.src = fullDataUrl;
+                imagePreview.classList.remove('hidden');
+                uploadPlaceholder.classList.add('hidden');
+                analyzeBtn.disabled = false;
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Webcam Handlers
+        async function startWebcam() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                webcamVideo.srcObject = mediaStream;
+            } catch (err) {
+                showToast('웹캠을 불러올 수 없습니다. 권한을 확인해주세요.', 'error');
+            }
+        }
+
+        function stopWebcam() {
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+        }
+
+        captureBtn.addEventListener('click', () => {
+            if (!webcamVideo.srcObject) return;
+            const context = webcamCanvas.getContext('2d');
+            webcamCanvas.width = webcamVideo.videoWidth;
+            webcamCanvas.height = webcamVideo.videoHeight;
+            context.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
+            
+            const dataUrl = webcamCanvas.toDataURL('image/jpeg');
+            selectedMimeType = 'image/jpeg';
+            selectedBase64Image = dataUrl.split(',')[1];
+
+            // Switch view back to preview
+            tabUploadBtn.click();
+            imagePreview.src = dataUrl;
+            imagePreview.classList.remove('hidden');
+            uploadPlaceholder.classList.add('hidden');
+            analyzeBtn.disabled = false;
+            showToast('사진이 촬영되었습니다!', 'success');
+        });
+
+        // API Call Handler
+        analyzeBtn.addEventListener('click', async () => {
+            if (!selectedBase64Image) {
+                showToast('분석할 사진을 선택해주세요.', 'error');
+                return;
+            }
+
+            // Show Loading UI
+            welcomeState.classList.add('hidden');
+            resultState.classList.add('hidden');
+            loadingState.classList.remove('hidden');
+            analyzeBtn.disabled = true;
+            analyzeBtnText.textContent = '분석 진행 중...';
+
+            try {
+                const response = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        image: selectedBase64Image,
+                        mimeType: selectedMimeType
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || '영양 분석 서비스 응답 오류');
+                }
+
+                const data = await response.json();
+                renderResults(data);
+                saveToHistory(data);
+                showToast('영양 분석이 성공적으로 완료되었습니다!', 'success');
+
+            } catch (err) {
+                console.error(err);
+                showToast(err.message || '분석 중 오류가 발생했습니다.', 'error');
+                welcomeState.classList.remove('hidden');
+            } finally {
+                loadingState.classList.add('hidden');
+                analyzeBtn.disabled = false;
+                analyzeBtnText.textContent = '영양 분석 시작하기';
+            }
+        });
+
+        // Render Analysis Results
+        function renderResults(data) {
+            loadingState.classList.add('hidden');
+            resultState.classList.remove('hidden');
+
+            document.getElementById('resMealName').textContent = data.mealName || '급식 식단 분석';
+            document.getElementById('resAnalysisDate').textContent = new Date().toLocaleDateString('ko-KR', {
+                year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+            });
+            document.getElementById('resTotalCalories').textContent = data.totalCalories || 0;
+            document.getElementById('resHealthScore').textContent = data.healthScore || 0;
+
+            // Macros
+            const carbs = data.totalCarbsG || 0;
+            const protein = data.totalProteinG || 0;
+            const fat = data.totalFatG || 0;
+            const totalGrams = carbs + protein + fat || 1;
+
+            const carbsPct = Math.round((carbs / totalGrams) * 100);
+            const proteinPct = Math.round((protein / totalGrams) * 100);
+            const fatPct = Math.round((fat / totalGrams) * 100);
+
+            document.getElementById('resCarbsText').textContent = `${carbs}g (${carbsPct}%)`;
+            document.getElementById('resProteinText').textContent = `${protein}g (${proteinPct}%)`;
+            document.getElementById('resFatText').textContent = `${fat}g (${fatPct}%)`;
+
+            document.getElementById('resCarbsBar').style.width = `${carbsPct}%`;
+            document.getElementById('resProteinBar').style.width = `${proteinPct}%`;
+            document.getElementById('resFatBar').style.width = `${fatPct}%`;
+
+            updateChart(carbs, protein, fat);
+
+            // Food Table
+            const tbody = document.getElementById('resFoodTableBody');
+            tbody.innerHTML = '';
+
+            if (data.items && data.items.length > 0) {
+                data.items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-slate-50 transition';
+                    tr.innerHTML = `
+                        <td class="py-3 px-4 font-semibold text-slate-800">${item.name || '알 수 없는 메뉴'}</td>
+                        <td class="py-3 px-2 text-center text-emerald-600 font-bold">${item.calories || 0} kcal</td>
+                        <td class="py-3 px-2 text-center">${item.carbsG || 0}g</td>
+                        <td class="py-3 px-2 text-center">${item.proteinG || 0}g</td>
+                        <td class="py-3 px-2 text-center">${item.fatG || 0}g</td>
+                        <td class="py-3 px-4 text-center">
+                            <span class="px-2 py-0.5 text-[11px] font-semibold rounded-full bg-emerald-100 text-emerald-800">
+                                ${item.healthTag || '좋음'}
+                            </span>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+
+            // AI Comments & Improvements
+            document.getElementById('resHealthComment').textContent = data.healthComment || '식단이 전반적으로 균형 잡혀 있습니다.';
+            const improvementsList = document.getElementById('resImprovementsList');
+            improvementsList.innerHTML = '';
+            
+            if (data.improvements && data.improvements.length > 0) {
+                data.improvements.forEach(tip => {
+                    const li = document.createElement('li');
+                    li.textContent = tip;
+                    improvementsList.appendChild(li);
+                });
+            } else {
+                const li = document.createElement('li');
+                li.textContent = '현재 식단 균형이 아주 뛰어납니다!';
+                improvementsList.appendChild(li);
+            }
+        }
+
+        // Chart.js Donut Chart
+        function initChart() {
+            const ctx = document.getElementById('macroChart').getContext('2d');
+            macroChartInstance = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['탄수화물', '단백질', '지방'],
+                    datasets: [{
+                        data: [50, 30, 20],
+                        backgroundColor: ['#FBBF24', '#F43F5E', '#6366F1'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    cutout: '70%'
+                }
+            });
+        }
+
+        function updateChart(carbs, protein, fat) {
+            if (macroChartInstance) {
+                macroChartInstance.data.datasets[0].data = [carbs, protein, fat];
+                macroChartInstance.update();
+            }
+        }
+
+        // LocalStorage History Handlers
+        function saveToHistory(data) {
+            let history = JSON.parse(localStorage.getItem('mealHistory') || '[]');
+            const record = {
+                id: Date.now(),
+                date: new Date().toLocaleDateString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+                mealName: data.mealName || '급식 분석',
+                calories: data.totalCalories || 0,
+                score: data.healthScore || 0,
+                data: data
+            };
+            history.unshift(record);
+            if (history.length > 10) history.pop();
+            localStorage.setItem('mealHistory', JSON.stringify(history));
+            loadHistory();
+        }
+
+        function loadHistory() {
+            let history = JSON.parse(localStorage.getItem('mealHistory') || '[]');
+            historyList.innerHTML = '';
+
+            if (history.length === 0) {
+                historyList.innerHTML = `<p class="text-center py-4 text-slate-400">저장된 기록이 없습니다.</p>`;
+                return;
+            }
+
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'p-2.5 rounded-xl bg-slate-50 hover:bg-emerald-50 cursor-pointer transition flex justify-between items-center border border-slate-100';
+                div.innerHTML = `
+                    <div>
+                        <p class="font-bold text-slate-800">${item.mealName}</p>
+                        <p class="text-[10px] text-slate-400">${item.date}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-extrabold text-emerald-600">${item.calories} kcal</p>
+                        <p class="text-[10px] text-blue-600">${item.score}점</p>
+                    </div>
+                `;
+                div.addEventListener('click', () => {
+                    welcomeState.classList.add('hidden');
+                    renderResults(item.data);
+                });
+                historyList.appendChild(div);
+            });
+        }
+
+        clearHistoryBtn.addEventListener('click', () => {
+            localStorage.removeItem('mealHistory');
+            loadHistory();
+            showToast('기록이 모두 삭제되었습니다.');
+        });
+    </script>
+</body>
+</html>
